@@ -36,26 +36,31 @@ details{margin-top:14px}
 summary{cursor:pointer;font-weight:600}
 textarea{width:100%;height:110px;margin:8px 0;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);direction:ltr}
 .note{color:var(--muted);font-size:.9rem}
-@media print{.bar,details,.del,.addrow{display:none}body{padding:0}td input{border:0}}
+.banner{background:var(--calc);border:1px solid var(--line);border-radius:6px;padding:8px 12px;margin-bottom:12px;font-weight:600}
+body.view .act,body.view .edit{display:none}
+body.view td input{border-color:transparent;background:transparent}
+@media print{.bar,details,.del,.addrow,.banner{display:none}body{padding:0}td input{border:0}}
 </style>
 </head>
 <body>
 <h1>حاسبة درجات الطلاب</h1>
 <p class="sub">العملي = (مجموع التمارين + الامتحان التطبيقي) ÷ عددهم &nbsp;|&nbsp; درجة الشهر = العملي + النظري + التقييم</p>
 
+<div class="banner" id="banner" style="display:none">نسخة للعرض والاطلاع فقط، لا يمكن التعديل عليها.</div>
 <div class="bar">
   <select id="month" aria-label="الشهر"></select>
-  <label class="n">عدد التمارين <input id="count" type="number" min="1" max="10"></label>
-  <button id="add" class="main">إضافة طالب</button>
+  <label class="n edit">عدد التمارين <input id="count" type="number" min="1" max="10"></label>
+  <button id="add" class="main edit">إضافة طالب</button>
   <button id="csv">تصدير CSV</button>
   <button id="print">طباعة</button>
-  <button id="clear">مسح هذا الشهر</button>
+  <button id="share" class="edit">رابط للعرض فقط</button>
+  <button id="clear" class="edit">مسح هذا الشهر</button>
 </div>
 
 <div class="wrap"><table id="tbl"></table></div>
 <div class="stats" id="stats"></div>
 
-<details>
+<details class="edit">
   <summary>لصق الدرجات من إكسل</summary>
   <p class="note">انسخ الصفوف من إكسل بالترتيب: الاسم، ثم التمارين، ثم التطبيقي، ثم النظري، ثم التقييم، والصقها هنا. سيُضاف الطلاب إلى الشهر الحالي.</p>
   <textarea id="paste" placeholder="Ahmed&#9;35&#9;38&#9;40&#9;30&#9;36&#9;18"></textarea>
@@ -66,9 +71,14 @@ textarea{width:100%;height:110px;margin:8px 0;padding:8px;border:1px solid var(-
 var MAXP=40,MAXT=40,MAXE=20,PASS=50;
 var MONTHS=["الشهر الأول","الشهر الثاني","الشهر الثالث","الشهر الرابع","الشهر الخامس","الشهر السادس"];
 var KEY="grades_v1",db={};
-try{db=JSON.parse(localStorage.getItem(KEY)||"{}")}catch(e){db={}}
+var VIEW=false;
+if(location.hash.indexOf("#v=")===0){
+  try{db=JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3)))));VIEW=true}catch(e){db={}}
+}
+if(!VIEW){try{db=JSON.parse(localStorage.getItem(KEY)||"{}")}catch(e){db={}}}
+if(VIEW){document.body.classList.add("view");document.getElementById("banner").style.display="block"}
 var cur=0;
-function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){}}
+function save(){if(VIEW)return;try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){}}
 function M(){var k="m"+cur;if(!db[k])db[k]={n:3,s:[]};return db[k]}
 function num(v){var x=parseFloat(v);return isNaN(x)?0:x}
 function calc(st,n){
@@ -80,7 +90,7 @@ function r(x){return Math.round(x*100)/100}
 function render(){
   var m=M(),n=m.n,h="<tr><th>#</th><th>اسم الطالب</th>",i;
   for(i=0;i<n;i++)h+="<th>ت"+(i+1)+"<small>من "+MAXP+"</small></th>";
-  h+="<th>التطبيقي<small>من "+MAXP+"</small></th><th>العملي<small>من "+MAXP+"</small></th><th>النظري<small>من "+MAXT+"</small></th><th>التقييم<small>من "+MAXE+"</small></th><th>درجة الشهر<small>من 100</small></th><th></th></tr>";
+  h+="<th>التطبيقي<small>من "+MAXP+"</small></th><th>العملي<small>من "+MAXP+"</small></th><th>النظري<small>من "+MAXT+"</small></th><th>التقييم<small>من "+MAXE+"</small></th><th>درجة الشهر<small>من 100</small></th><th class='act'></th></tr>";
   m.s.forEach(function(st,idx){
     var c=calc(st,n);
     h+="<tr data-i='"+idx+"'><td>"+(idx+1)+"</td><td class='name'><input data-f='name' value=\""+esc(st.name||"")+"\"></td>";
@@ -90,10 +100,11 @@ function render(){
     h+="<td><input type='number' step='any' data-f='th' data-max='"+MAXT+"' value='"+(st.th==null?"":st.th)+"'></td>";
     h+="<td><input type='number' step='any' data-f='ev' data-max='"+MAXE+"' value='"+(st.ev==null?"":st.ev)+"'></td>";
     h+="<td class='final "+(c.total>=PASS?"pass":"fail")+"' data-o='total'>"+r(c.total)+"</td>";
-    h+="<td><button class='del' title='حذف الطالب'>حذف</button></td></tr>";
+    h+="<td class='act'><button class='del' title='حذف الطالب'>حذف</button></td></tr>";
   });
-  if(!m.s.length)h+="<tr><td colspan='"+(n+8)+"' class='note' style='padding:16px'>لا يوجد طلاب بعد. اضغط «إضافة طالب» أو الصق الدرجات من إكسل.</td></tr>";
+  if(!m.s.length)h+="<tr><td colspan='"+(n+8)+"' class='note' style='padding:16px'>"+(VIEW?"لا توجد درجات لهذا الشهر.":"لا يوجد طلاب بعد. اضغط «إضافة طالب» أو الصق الدرجات من إكسل.")+"</td></tr>";
   tbl.innerHTML=h;
+  if(VIEW)tbl.querySelectorAll("input").forEach(function(x){x.readOnly=true});
   count.value=n;
   stats();
 }
@@ -132,6 +143,18 @@ document.getElementById("add").onclick=function(){M().s.push({name:"",t:[],p:"",
   var rows=tbl.querySelectorAll("tr[data-i]");var l=rows[rows.length-1];if(l)l.querySelector("input").focus()};
 document.getElementById("clear").onclick=function(){if(confirm("مسح كل طلاب هذا الشهر؟")){M().s=[];save();render()}};
 document.getElementById("print").onclick=function(){window.print()};
+document.getElementById("share").onclick=function(){
+  var hide=confirm("الرابط يحتوي الدرجات، وأي شخص عنده الرابط يكدر يشوفها.\n\nاضغط «موافق» لإخفاء أسماء الطلاب (تظهر أرقام بدلها)، أو «إلغاء» لإظهار الأسماء.");
+  var out={};
+  Object.keys(db).forEach(function(k){
+    var m=db[k];if(!m.s||!m.s.length)return;
+    out[k]={n:m.n,s:m.s.map(function(st,i){return {name:hide?("طالب "+(i+1)):(st.name||""),t:st.t,p:st.p,th:st.th,ev:st.ev}})};
+  });
+  var link=location.href.split("#")[0]+"#v="+btoa(unescape(encodeURIComponent(JSON.stringify(out))));
+  var done=function(){alert("تم نسخ رابط العرض فقط. الصقه بواتساب أو أي مكان. من يفتحه يشوف الدرجات بدون تعديل.\n\nتنبيه: الرابط يمثل الدرجات بهذه اللحظة، وإذا عدلت درجات بعدها لازم تسوي رابط جديد.")};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(link).then(done,function(){prompt("انسخ الرابط:",link)})}
+  else prompt("انسخ الرابط:",link);
+};
 document.getElementById("csv").onclick=function(){
   var m=M(),n=m.n,i,head=["الاسم"];
   for(i=0;i<n;i++)head.push("ت"+(i+1));
