@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>حاسبة درجات الطلاب</title>
+<style>
+:root{--bg:#eef3f4;--surface:#fff;--ink:#14232b;--muted:#5b6c74;--line:#cfdadd;--accent:#0f6b73;--accent-ink:#fff;--bad:#b42318;--good:#14663a;--calc:#e4f0f1}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1a1e;--surface:#16252b;--ink:#e6eef0;--muted:#93a6ad;--line:#2b4047;--accent:#4fb3bc;--accent-ink:#06191c;--bad:#ff8a7a;--good:#6fd39a;--calc:#1d3238}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:"Segoe UI",Tahoma,"Noto Naskh Arabic",Arial,sans-serif;line-height:1.6;padding:16px}
+h1{font-size:1.4rem;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 16px;font-size:.95rem}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+select,input,button,textarea{font:inherit;color:inherit}
+select,button{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 12px;cursor:pointer}
+button.main{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+label.n{display:flex;gap:6px;align-items:center}
+label.n input{width:56px}
+.wrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:760px}
+th,td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:center;white-space:nowrap}
+th{background:var(--calc);font-weight:600;font-size:.9rem;position:sticky;top:0}
+th small{display:block;color:var(--muted);font-weight:400}
+td input{width:64px;padding:4px;border:1px solid var(--line);border-radius:4px;background:var(--surface);text-align:center}
+td.name input{width:170px;text-align:right}
+td.calc{background:var(--calc);font-weight:700}
+td.final{background:var(--calc);font-weight:800;font-size:1.05rem}
+.fail{color:var(--bad)}.pass{color:var(--good)}
+td input.over{border-color:var(--bad);background:rgba(180,35,24,.12)}
+.del{padding:2px 8px;color:var(--bad)}
+.stats{margin:12px 0;color:var(--muted);font-size:.95rem}
+details{margin-top:14px}
+summary{cursor:pointer;font-weight:600}
+textarea{width:100%;height:110px;margin:8px 0;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);direction:ltr}
+.note{color:var(--muted);font-size:.9rem}
+.banner{background:var(--calc);border:1px solid var(--line);border-radius:6px;padding:8px 12px;margin-bottom:12px;font-weight:600}
+body.view .act,body.view .edit{display:none}
+body.view td input{border-color:transparent;background:transparent}
+@media print{.bar,details,.del,.addrow,.banner{display:none}body{padding:0}td input{border:0}}
+</style>
+</head>
+<body>
+<h1>حاسبة درجات الطلاب</h1>
+<p class="sub">العملي = (مجموع التمارين + الامتحان التطبيقي) ÷ عددهم &nbsp;|&nbsp; درجة الشهر = العملي + النظري + التقييم</p>
+
+<div class="banner" id="banner" style="display:none">نسخة للعرض والاطلاع فقط، لا يمكن التعديل عليها.</div>
+<div class="bar">
+  <select id="month" aria-label="الشهر"></select>
+  <label class="n edit">عدد التمارين <input id="count" type="number" min="1" max="10"></label>
+  <button id="add" class="main edit">إضافة طالب</button>
+  <button id="csv">تصدير CSV</button>
+  <button id="print">طباعة</button>
+  <button id="share" class="edit">رابط للعرض فقط</button>
+  <button id="clear" class="edit">مسح هذا الشهر</button>
+</div>
+
+<div class="wrap"><table id="tbl"></table></div>
+<div class="stats" id="stats"></div>
+
+<details class="edit">
+  <summary>لصق الدرجات من إكسل</summary>
+  <p class="note">انسخ الصفوف من إكسل بالترتيب: الاسم، ثم التمارين، ثم التطبيقي، ثم النظري، ثم التقييم، والصقها هنا. سيُضاف الطلاب إلى الشهر الحالي.</p>
+  <textarea id="paste" placeholder="Ahmed&#9;35&#9;38&#9;40&#9;30&#9;36&#9;18"></textarea>
+  <button id="imp">استيراد</button>
+</details>
+
+<script>
+var MAXP=40,MAXT=40,MAXE=20,PASS=50;
+var MONTHS=["الشهر الأول","الشهر الثاني","الشهر الثالث","الشهر الرابع","الشهر الخامس","الشهر السادس"];
+var KEY="grades_v1",db={};
+var VIEW=false;
+if(location.hash.indexOf("#v=")===0){
+  try{db=JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3)))));VIEW=true}catch(e){db={}}
+}
+if(!VIEW){try{db=JSON.parse(localStorage.getItem(KEY)||"{}")}catch(e){db={}}}
+if(VIEW){document.body.classList.add("view");document.getElementById("banner").style.display="block"}
+var cur=0;
+function save(){if(VIEW)return;try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){}}
+function M(){var k="m"+cur;if(!db[k])db[k]={n:3,s:[]};return db[k]}
+function num(v){var x=parseFloat(v);return isNaN(x)?0:x}
+function calc(st,n){
+  var sum=0,i;for(i=0;i<n;i++)sum+=num(st.t[i]);
+  var prac=(sum+num(st.p))/(n+1);
+  return {prac:prac,total:prac+num(st.th)+num(st.ev)};
+}
+function r(x){return Math.round(x*100)/100}
+function render(){
+  var m=M(),n=m.n,h="<tr><th>#</th><th>اسم الطالب</th>",i;
+  for(i=0;i<n;i++)h+="<th>ت"+(i+1)+"<small>من "+MAXP+"</small></th>";
+  h+="<th>التطبيقي<small>من "+MAXP+"</small></th><th>العملي<small>من "+MAXP+"</small></th><th>النظري<small>من "+MAXT+"</small></th><th>التقييم<small>من "+MAXE+"</small></th><th>درجة الشهر<small>من 100</small></th><th class='act'></th></tr>";
+  m.s.forEach(function(st,idx){
+    var c=calc(st,n);
+    h+="<tr data-i='"+idx+"'><td>"+(idx+1)+"</td><td class='name'><input data-f='name' value=\""+esc(st.name||"")+"\"></td>";
+    for(i=0;i<n;i++)h+="<td><input type='number' step='any' data-f='t' data-k='"+i+"' data-max='"+MAXP+"' value='"+(st.t[i]==null?"":st.t[i])+"'></td>";
+    h+="<td><input type='number' step='any' data-f='p' data-max='"+MAXP+"' value='"+(st.p==null?"":st.p)+"'></td>";
+    h+="<td class='calc' data-o='prac'>"+r(c.prac)+"</td>";
+    h+="<td><input type='number' step='any' data-f='th' data-max='"+MAXT+"' value='"+(st.th==null?"":st.th)+"'></td>";
+    h+="<td><input type='number' step='any' data-f='ev' data-max='"+MAXE+"' value='"+(st.ev==null?"":st.ev)+"'></td>";
+    h+="<td class='final "+(c.total>=PASS?"pass":"fail")+"' data-o='total'>"+r(c.total)+"</td>";
+    h+="<td class='act'><button class='del' title='حذف الطالب'>حذف</button></td></tr>";
+  });
+  if(!m.s.length)h+="<tr><td colspan='"+(n+8)+"' class='note' style='padding:16px'>"+(VIEW?"لا توجد درجات لهذا الشهر.":"لا يوجد طلاب بعد. اضغط «إضافة طالب» أو الصق الدرجات من إكسل.")+"</td></tr>";
+  tbl.innerHTML=h;
+  if(VIEW)tbl.querySelectorAll("input").forEach(function(x){x.readOnly=true});
+  count.value=n;
+  stats();
+}
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;")}
+function stats(){
+  var m=M(),n=m.n,ok=0,tot=0;
+  m.s.forEach(function(st){var t=calc(st,n).total;tot+=t;if(t>=PASS)ok++});
+  document.getElementById("stats").textContent=m.s.length?("عدد الطلاب: "+m.s.length+" | الناجحون (50 فأكثر): "+ok+" | الراسبون: "+(m.s.length-ok)+" | المعدل: "+r(tot/m.s.length)):"";
+}
+var tbl=document.getElementById("tbl"),count=document.getElementById("count");
+tbl.addEventListener("input",function(e){
+  var el=e.target,tr=el.closest("tr");if(!tr||!el.dataset.f)return;
+  var m=M(),st=m.s[+tr.dataset.i],f=el.dataset.f;
+  if(f==="name")st.name=el.value;
+  else{
+    el.classList.toggle("over",num(el.value)>+el.dataset.max||num(el.value)<0);
+    if(f==="t")st.t[+el.dataset.k]=el.value;else st[f]=el.value;
+    var c=calc(st,m.n);
+    tr.querySelector("[data-o=prac]").textContent=r(c.prac);
+    var fe=tr.querySelector("[data-o=total]");fe.textContent=r(c.total);
+    fe.className="final "+(c.total>=PASS?"pass":"fail");
+    stats();
+  }
+  save();
+});
+tbl.addEventListener("click",function(e){
+  if(!e.target.classList.contains("del"))return;
+  var tr=e.target.closest("tr"),m=M();
+  if(confirm("حذف هذا الطالب؟")){m.s.splice(+tr.dataset.i,1);save();render()}
+});
+var sel=document.getElementById("month");
+MONTHS.forEach(function(n,i){var o=document.createElement("option");o.value=i;o.textContent=n;sel.appendChild(o)});
+sel.onchange=function(){cur=+sel.value;render()};
+count.onchange=function(){var v=Math.max(1,Math.min(10,parseInt(count.value)||1));M().n=v;save();render()};
+document.getElementById("add").onclick=function(){M().s.push({name:"",t:[],p:"",th:"",ev:""});save();render();
+  var rows=tbl.querySelectorAll("tr[data-i]");var l=rows[rows.length-1];if(l)l.querySelector("input").focus()};
+document.getElementById("clear").onclick=function(){if(confirm("مسح كل طلاب هذا الشهر؟")){M().s=[];save();render()}};
+document.getElementById("print").onclick=function(){window.print()};
+document.getElementById("share").onclick=function(){
+  var hide=confirm("الرابط يحتوي الدرجات، وأي شخص عنده الرابط يكدر يشوفها.\n\nاضغط «موافق» لإخفاء أسماء الطلاب (تظهر أرقام بدلها)، أو «إلغاء» لإظهار الأسماء.");
+  var out={};
+  Object.keys(db).forEach(function(k){
+    var m=db[k];if(!m.s||!m.s.length)return;
+    out[k]={n:m.n,s:m.s.map(function(st,i){return {name:hide?("طالب "+(i+1)):(st.name||""),t:st.t,p:st.p,th:st.th,ev:st.ev}})};
+  });
+  var link=location.href.split("#")[0]+"#v="+btoa(unescape(encodeURIComponent(JSON.stringify(out))));
+  var done=function(){alert("تم نسخ رابط العرض فقط. الصقه بواتساب أو أي مكان. من يفتحه يشوف الدرجات بدون تعديل.\n\nتنبيه: الرابط يمثل الدرجات بهذه اللحظة، وإذا عدلت درجات بعدها لازم تسوي رابط جديد.")};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(link).then(done,function(){prompt("انسخ الرابط:",link)})}
+  else prompt("انسخ الرابط:",link);
+};
+document.getElementById("csv").onclick=function(){
+  var m=M(),n=m.n,i,head=["الاسم"];
+  for(i=0;i<n;i++)head.push("ت"+(i+1));
+  head=head.concat(["التطبيقي","العملي","النظري","التقييم","درجة الشهر"]);
+  var rows=[head];
+  m.s.forEach(function(st){
+    var c=calc(st,n),row=[st.name||""];
+    for(i=0;i<n;i++)row.push(st.t[i]||0);
+    row=row.concat([st.p||0,r(c.prac),st.th||0,st.ev||0,r(c.total)]);rows.push(row);
+  });
+  var txt="\ufeff"+rows.map(function(x){return x.map(function(v){return '"'+String(v).replace(/"/g,'""')+'"'}).join(",")}).join("\r\n");
+  var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([txt],{type:"text/csv;charset=utf-8"}));
+  a.download="درجات-"+MONTHS[cur]+".csv";a.click();
+};
+document.getElementById("imp").onclick=function(){
+  var lines=document.getElementById("paste").value.split(/\r?\n/).filter(function(l){return l.trim()});
+  var m=M(),n=m.n;
+  lines.forEach(function(l){
+    var c=l.split("\t");if(c.length<2)return;
+    var st={name:c[0].trim(),t:[],p:"",th:"",ev:""},i;
+    for(i=0;i<n;i++)st.t[i]=c[1+i]!=null?c[1+i].trim():"";
+    st.p=(c[1+n]||"").trim();st.th=(c[2+n]||"").trim();st.ev=(c[3+n]||"").trim();
+    m.s.push(st);
+  });
+  document.getElementById("paste").value="";save();render();
+};
+render();
+</script>
+</body>
+</html>
