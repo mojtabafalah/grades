@@ -36,20 +36,62 @@ details{margin-top:14px}
 summary{cursor:pointer;font-weight:600}
 textarea{width:100%;height:110px;margin:8px 0;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);direction:ltr}
 .note{color:var(--muted);font-size:.9rem}
+.cfg{display:flex;flex-wrap:wrap;gap:14px;margin:8px 0}
+.cfg label{display:flex;gap:6px;align-items:center}
+.cfg input[type=number]{width:72px;padding:4px;border:1px solid var(--line);border-radius:4px;background:var(--surface)}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.school{font-size:1.15rem;font-weight:700;color:var(--accent)}
+.credit{font-size:.85rem;color:var(--muted);white-space:nowrap}
+.ctitle{display:none;font-weight:700;margin:0 0 8px}
 .banner{background:var(--calc);border:1px solid var(--line);border-radius:6px;padding:8px 12px;margin-bottom:12px;font-weight:600}
 body.view .act,body.view .edit{display:none}
 body.view td input{border-color:transparent;background:transparent}
-@media print{.bar,details,.del,.addrow,.banner{display:none}body{padding:0}td input{border:0}}
+@media print{.bar,details,.del,.addrow,.banner{display:none}.ctitle{display:block}body{padding:0}td input{border:0}}
 </style>
 </head>
 <body>
-<h1>حاسبة درجات الطلاب</h1>
+<header class="top">
+  <div>
+    <div class="school">اعدادية ايليا المهنية</div>
+    <h1>حاسبة درجات الطلاب</h1>
+  </div>
+  <div class="credit" dir="ltr">by eng mojtaba falah alali</div>
+</header>
 <p class="sub">العملي = (مجموع التمارين + الامتحان التطبيقي) ÷ عددهم &nbsp;|&nbsp; درجة الشهر = العملي + النظري + التقييم</p>
 
 <div class="banner" id="banner" style="display:none">نسخة للعرض والاطلاع فقط، لا يمكن التعديل عليها.</div>
+<p class="ctitle" id="ctitle"></p>
+<div class="bar">
+  <label class="n">الشعبة <select id="cls" aria-label="الشعبة"></select></label>
+  <button id="cnew" class="edit">شعبة جديدة</button>
+  <button id="cren" class="edit">تسمية الشعبة</button>
+  <button id="cdel" class="edit">حذف الشعبة</button>
+</div>
+<div class="bar">
+  <label class="n">المادة <select id="sub" aria-label="المادة"></select></label>
+  <button id="snew" class="edit">مادة جديدة</button>
+  <button id="sren" class="edit">تسمية المادة</button>
+  <button id="sdel" class="edit">حذف المادة</button>
+</div>
+<details class="edit" id="cfgbox">
+  <summary>حقول المادة الحالية (إضافة أو حذف التمارين والتطبيقي والنظري والتقييم)</summary>
+  <p class="note">الإعدادات تخص المادة المختارة فقط. العملي يُحسب تلقائياً من التمارين والتطبيقي. الحقل المحذوف يختفي من الجدول ولا تضيع درجاته إذا رجعته.</p>
+  <div class="cfg">
+    <label><input type="checkbox" id="g_ex"> التمارين</label>
+    <label><input type="checkbox" id="g_pr"> الامتحان التطبيقي</label>
+    <label><input type="checkbox" id="g_th"> النظري</label>
+    <label><input type="checkbox" id="g_ev"> التقييم</label>
+  </div>
+  <div class="cfg">
+    <label>الدرجة العظمى للعملي (التمارين والتطبيقي) <input type="number" id="m_p" min="1" step="any"></label>
+    <label>النظري <input type="number" id="m_t" min="1" step="any"></label>
+    <label>التقييم <input type="number" id="m_e" min="1" step="any"></label>
+  </div>
+  <p class="note" id="cfgtot"></p>
+</details>
 <div class="bar">
   <select id="month" aria-label="الشهر"></select>
-  <label class="n edit">عدد التمارين <input id="count" type="number" min="1" max="10"></label>
+  <label class="n edit" id="cntlbl">عدد التمارين <input id="count" type="number" min="1" max="10"></label>
   <button id="add" class="main edit">إضافة طالب</button>
   <button id="csv">تصدير CSV</button>
   <button id="print">طباعة</button>
@@ -62,57 +104,94 @@ body.view td input{border-color:transparent;background:transparent}
 
 <details class="edit">
   <summary>لصق الدرجات من إكسل</summary>
-  <p class="note">انسخ الصفوف من إكسل بالترتيب: الاسم، ثم التمارين، ثم التطبيقي، ثم النظري، ثم التقييم، والصقها هنا. سيُضاف الطلاب إلى الشهر الحالي.</p>
+  <p class="note" id="impnote"></p>
   <textarea id="paste" placeholder="Ahmed&#9;35&#9;38&#9;40&#9;30&#9;36&#9;18"></textarea>
   <button id="imp">استيراد</button>
 </details>
 
 <script>
-var MAXP=40,MAXT=40,MAXE=20,PASS=50;
+var DEF={ex:true,pr:true,th:true,ev:true,mp:40,mt:40,me:20};
 var MONTHS=["الشهر الأول","الشهر الثاني","الشهر الثالث","الشهر الرابع","الشهر الخامس","الشهر السادس"];
-var KEY="grades_v1",db={};
+var KEY="grades_v1",KEY2="grades_v2",store=null;
 var VIEW=false;
+function wrap(p){return (p&&p.classes)?p:{classes:[{name:"الشعبة",months:p||{}}],active:0}}
 if(location.hash.indexOf("#v=")===0){
-  try{db=JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3)))));VIEW=true}catch(e){db={}}
+  try{store=wrap(JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3))))));VIEW=true}catch(e){store=null}
 }
-if(!VIEW){try{db=JSON.parse(localStorage.getItem(KEY)||"{}")}catch(e){db={}}}
+if(!VIEW){
+  try{
+    var raw=localStorage.getItem(KEY2);
+    if(raw)store=JSON.parse(raw);
+    else{var old=localStorage.getItem(KEY);store={classes:[{name:"الشعبة الأولى",months:old?JSON.parse(old):{}}],active:0}}
+  }catch(e){store=null}
+}
+if(!store||!store.classes||!store.classes.length)store={classes:[{name:"الشعبة الأولى",months:{}}],active:0};
+if(!(store.active>=0&&store.active<store.classes.length))store.active=0;
+if(!store.subjects||!store.subjects.length){store.subjects=[{id:1,name:"أساسيات الكهرباء والإلكترونيك"},{id:2,name:"مبادئ الاتصالات والشبكات"}];store.sub=1}
+if(!store.subjects.some(function(s){return s.id===store.sub}))store.sub=store.subjects[0].id;
+store.classes.forEach(function(c){
+  c.months=c.months||{};
+  Object.keys(c.months).forEach(function(k){
+    var mm=/^m(\d+)$/.exec(k);
+    if(mm){var nk="s"+store.subjects[0].id+"m"+mm[1];if(!c.months[nk])c.months[nk]=c.months[k];delete c.months[k]}
+  });
+});
 if(VIEW){document.body.classList.add("view");document.getElementById("banner").style.display="block"}
 var cur=0;
-function save(){if(VIEW)return;try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){}}
-function M(){var k="m"+cur;if(!db[k])db[k]={n:3,s:[]};return db[k]}
+function save(){if(VIEW)return;try{localStorage.setItem(KEY2,JSON.stringify(store))}catch(e){}}
+function C(){return store.classes[store.active]}
+function M(){var c=C(),k="s"+store.sub+"m"+cur;if(!c.months[k])c.months[k]={n:3,s:[]};return c.months[k]}
+function subName(){var s=store.subjects.filter(function(x){return x.id===store.sub})[0];return s?s.name:""}
+function updTitle(){document.getElementById("ctitle").textContent="الشعبة: "+C().name+" | المادة: "+subName()+" | "+MONTHS[cur]}
+window.addEventListener("hashchange",function(){location.reload()});
 function num(v){var x=parseFloat(v);return isNaN(x)?0:x}
-function calc(st,n){
-  var sum=0,i;for(i=0;i<n;i++)sum+=num(st.t[i]);
-  var prac=(sum+num(st.p))/(n+1);
-  return {prac:prac,total:prac+num(st.th)+num(st.ev)};
+function curSub(){return store.subjects.filter(function(x){return x.id===store.sub})[0]}
+function cfg(){var c=curSub().cfg||{},o={},k;for(k in DEF)o[k]=(c[k]===undefined?DEF[k]:c[k]);return o}
+function hasPrac(g){return g.ex||g.pr}
+function maxTotal(g){return (hasPrac(g)?g.mp:0)+(g.th?g.mt:0)+(g.ev?g.me:0)}
+function calc(st,n,g){
+  var sum=0,i,prac=0;
+  if(g.ex)for(i=0;i<n;i++)sum+=num(st.t[i]);
+  if(g.ex&&g.pr)prac=(sum+num(st.p))/(n+1);
+  else if(g.ex)prac=n?sum/n:0;
+  else if(g.pr)prac=num(st.p);
+  return {prac:prac,total:prac+(g.th?num(st.th):0)+(g.ev?num(st.ev):0)};
 }
 function r(x){return Math.round(x*100)/100}
 function render(){
-  var m=M(),n=m.n,h="<tr><th>#</th><th>اسم الطالب</th>",i;
-  for(i=0;i<n;i++)h+="<th>ت"+(i+1)+"<small>من "+MAXP+"</small></th>";
-  h+="<th>التطبيقي<small>من "+MAXP+"</small></th><th>العملي<small>من "+MAXP+"</small></th><th>النظري<small>من "+MAXT+"</small></th><th>التقييم<small>من "+MAXE+"</small></th><th>درجة الشهر<small>من 100</small></th><th class='act'></th></tr>";
+  var g=cfg(),m=M(),n=m.n,mx=maxTotal(g),pm=mx/2,h="<tr><th>#</th><th>اسم الطالب</th>",i;
+  if(g.ex)for(i=0;i<n;i++)h+="<th>ت"+(i+1)+"<small>من "+g.mp+"</small></th>";
+  if(g.pr)h+="<th>التطبيقي<small>من "+g.mp+"</small></th>";
+  if(hasPrac(g))h+="<th>العملي<small>من "+g.mp+"</small></th>";
+  if(g.th)h+="<th>النظري<small>من "+g.mt+"</small></th>";
+  if(g.ev)h+="<th>التقييم<small>من "+g.me+"</small></th>";
+  h+="<th>درجة الشهر<small>من "+r(mx)+"</small></th><th class='act'></th></tr>";
+  var cols=(h.match(/<th/g)||[]).length;
   m.s.forEach(function(st,idx){
-    var c=calc(st,n);
+    var c=calc(st,n,g);
     h+="<tr data-i='"+idx+"'><td>"+(idx+1)+"</td><td class='name'><input data-f='name' value=\""+esc(st.name||"")+"\"></td>";
-    for(i=0;i<n;i++)h+="<td><input type='number' step='any' data-f='t' data-k='"+i+"' data-max='"+MAXP+"' value='"+(st.t[i]==null?"":st.t[i])+"'></td>";
-    h+="<td><input type='number' step='any' data-f='p' data-max='"+MAXP+"' value='"+(st.p==null?"":st.p)+"'></td>";
-    h+="<td class='calc' data-o='prac'>"+r(c.prac)+"</td>";
-    h+="<td><input type='number' step='any' data-f='th' data-max='"+MAXT+"' value='"+(st.th==null?"":st.th)+"'></td>";
-    h+="<td><input type='number' step='any' data-f='ev' data-max='"+MAXE+"' value='"+(st.ev==null?"":st.ev)+"'></td>";
-    h+="<td class='final "+(c.total>=PASS?"pass":"fail")+"' data-o='total'>"+r(c.total)+"</td>";
+    if(g.ex)for(i=0;i<n;i++)h+="<td><input type='number' step='any' data-f='t' data-k='"+i+"' data-max='"+g.mp+"' value='"+(st.t[i]==null?"":st.t[i])+"'></td>";
+    if(g.pr)h+="<td><input type='number' step='any' data-f='p' data-max='"+g.mp+"' value='"+(st.p==null?"":st.p)+"'></td>";
+    if(hasPrac(g))h+="<td class='calc' data-o='prac'>"+r(c.prac)+"</td>";
+    if(g.th)h+="<td><input type='number' step='any' data-f='th' data-max='"+g.mt+"' value='"+(st.th==null?"":st.th)+"'></td>";
+    if(g.ev)h+="<td><input type='number' step='any' data-f='ev' data-max='"+g.me+"' value='"+(st.ev==null?"":st.ev)+"'></td>";
+    h+="<td class='final "+(c.total>=pm?"pass":"fail")+"' data-o='total'>"+r(c.total)+"</td>";
     h+="<td class='act'><button class='del' title='حذف الطالب'>حذف</button></td></tr>";
   });
-  if(!m.s.length)h+="<tr><td colspan='"+(n+8)+"' class='note' style='padding:16px'>"+(VIEW?"لا توجد درجات لهذا الشهر.":"لا يوجد طلاب بعد. اضغط «إضافة طالب» أو الصق الدرجات من إكسل.")+"</td></tr>";
+  if(!m.s.length)h+="<tr><td colspan='"+cols+"' class='note' style='padding:16px'>"+(VIEW?"لا توجد درجات لهذا الشهر.":"لا يوجد طلاب بعد. اضغط «إضافة طالب» أو الصق الدرجات من إكسل.")+"</td></tr>";
   tbl.innerHTML=h;
   if(VIEW)tbl.querySelectorAll("input").forEach(function(x){x.readOnly=true});
   count.value=n;
+  document.getElementById("cntlbl").style.display=g.ex?"":"none";
+  cfgUI();
+  updTitle();
   stats();
 }
 function esc(s){return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;")}
 function stats(){
-  var m=M(),n=m.n,ok=0,tot=0;
-  m.s.forEach(function(st){var t=calc(st,n).total;tot+=t;if(t>=PASS)ok++});
-  document.getElementById("stats").textContent=m.s.length?("عدد الطلاب: "+m.s.length+" | الناجحون (50 فأكثر): "+ok+" | الراسبون: "+(m.s.length-ok)+" | المعدل: "+r(tot/m.s.length)):"";
+  var g=cfg(),m=M(),n=m.n,ok=0,tot=0,pm=maxTotal(g)/2;
+  m.s.forEach(function(st){var t=calc(st,n,g).total;tot+=t;if(t>=pm)ok++});
+  document.getElementById("stats").textContent=m.s.length?("عدد الطلاب: "+m.s.length+" | الناجحون ("+r(pm)+" فأكثر): "+ok+" | الراسبون: "+(m.s.length-ok)+" | المعدل: "+r(tot/m.s.length)):"";
 }
 var tbl=document.getElementById("tbl"),count=document.getElementById("count");
 tbl.addEventListener("input",function(e){
@@ -122,10 +201,10 @@ tbl.addEventListener("input",function(e){
   else{
     el.classList.toggle("over",num(el.value)>+el.dataset.max||num(el.value)<0);
     if(f==="t")st.t[+el.dataset.k]=el.value;else st[f]=el.value;
-    var c=calc(st,m.n);
-    tr.querySelector("[data-o=prac]").textContent=r(c.prac);
+    var g=cfg(),c=calc(st,m.n,g),pc=tr.querySelector("[data-o=prac]");
+    if(pc)pc.textContent=r(c.prac);
     var fe=tr.querySelector("[data-o=total]");fe.textContent=r(c.total);
-    fe.className="final "+(c.total>=PASS?"pass":"fail");
+    fe.className="final "+(c.total>=maxTotal(g)/2?"pass":"fail");
     stats();
   }
   save();
@@ -145,42 +224,134 @@ document.getElementById("clear").onclick=function(){if(confirm("مسح كل طل
 document.getElementById("print").onclick=function(){window.print()};
 document.getElementById("share").onclick=function(){
   var hide=confirm("الرابط يحتوي الدرجات، وأي شخص عنده الرابط يكدر يشوفها.\n\nاضغط «موافق» لإخفاء أسماء الطلاب (تظهر أرقام بدلها)، أو «إلغاء» لإظهار الأسماء.");
-  var out={};
-  Object.keys(db).forEach(function(k){
-    var m=db[k];if(!m.s||!m.s.length)return;
-    out[k]={n:m.n,s:m.s.map(function(st,i){return {name:hide?("طالب "+(i+1)):(st.name||""),t:st.t,p:st.p,th:st.th,ev:st.ev}})};
+  var only=(store.classes.length>1||store.subjects.length>1)&&confirm("اضغط «موافق» لمشاركة الشعبة والمادة الحالية فقط:\n"+C().name+" / "+subName()+"\n\nأو «إلغاء» لمشاركة كل الشعب والمواد.");
+  var out={classes:[],active:0,subjects:store.subjects,sub:store.sub};
+  var src=only?[C()]:store.classes;
+  src.forEach(function(c){
+    var ms={};
+    Object.keys(c.months).forEach(function(k){
+      if(only&&k.indexOf("s"+store.sub+"m")!==0)return;
+      var m=c.months[k];if(!m.s||!m.s.length)return;
+      ms[k]={n:m.n,s:m.s.map(function(st,i){return {name:hide?("طالب "+(i+1)):(st.name||""),t:st.t,p:st.p,th:st.th,ev:st.ev}})};
+    });
+    if(Object.keys(ms).length)out.classes.push({name:c.name,months:ms});
   });
+  if(!out.classes.length){alert("لا توجد درجات للمشاركة.");return}
   var link=location.href.split("#")[0]+"#v="+btoa(unescape(encodeURIComponent(JSON.stringify(out))));
   var done=function(){alert("تم نسخ رابط العرض فقط. الصقه بواتساب أو أي مكان. من يفتحه يشوف الدرجات بدون تعديل.\n\nتنبيه: الرابط يمثل الدرجات بهذه اللحظة، وإذا عدلت درجات بعدها لازم تسوي رابط جديد.")};
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(link).then(done,function(){prompt("انسخ الرابط:",link)})}
   else prompt("انسخ الرابط:",link);
 };
 document.getElementById("csv").onclick=function(){
-  var m=M(),n=m.n,i,head=["الاسم"];
-  for(i=0;i<n;i++)head.push("ت"+(i+1));
-  head=head.concat(["التطبيقي","العملي","النظري","التقييم","درجة الشهر"]);
+  var g=cfg(),m=M(),n=m.n,i,head=["الاسم"];
+  if(g.ex)for(i=0;i<n;i++)head.push("ت"+(i+1));
+  if(g.pr)head.push("التطبيقي");
+  if(hasPrac(g))head.push("العملي");
+  if(g.th)head.push("النظري");
+  if(g.ev)head.push("التقييم");
+  head.push("درجة الشهر");
   var rows=[head];
   m.s.forEach(function(st){
-    var c=calc(st,n),row=[st.name||""];
-    for(i=0;i<n;i++)row.push(st.t[i]||0);
-    row=row.concat([st.p||0,r(c.prac),st.th||0,st.ev||0,r(c.total)]);rows.push(row);
+    var c=calc(st,n,g),row=[st.name||""];
+    if(g.ex)for(i=0;i<n;i++)row.push(st.t[i]||0);
+    if(g.pr)row.push(st.p||0);
+    if(hasPrac(g))row.push(r(c.prac));
+    if(g.th)row.push(st.th||0);
+    if(g.ev)row.push(st.ev||0);
+    row.push(r(c.total));rows.push(row);
   });
   var txt="\ufeff"+rows.map(function(x){return x.map(function(v){return '"'+String(v).replace(/"/g,'""')+'"'}).join(",")}).join("\r\n");
   var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([txt],{type:"text/csv;charset=utf-8"}));
-  a.download="درجات-"+MONTHS[cur]+".csv";a.click();
+  a.download=("درجات-"+C().name+"-"+subName()+"-"+MONTHS[cur]).replace(/[\\\/:*?"<>|]/g,"-")+".csv";a.click();
 };
 document.getElementById("imp").onclick=function(){
   var lines=document.getElementById("paste").value.split(/\r?\n/).filter(function(l){return l.trim()});
-  var m=M(),n=m.n;
+  var g=cfg(),m=M(),n=m.n;
   lines.forEach(function(l){
     var c=l.split("\t");if(c.length<2)return;
-    var st={name:c[0].trim(),t:[],p:"",th:"",ev:""},i;
-    for(i=0;i<n;i++)st.t[i]=c[1+i]!=null?c[1+i].trim():"";
-    st.p=(c[1+n]||"").trim();st.th=(c[2+n]||"").trim();st.ev=(c[3+n]||"").trim();
+    var st={name:c[0].trim(),t:[],p:"",th:"",ev:""},i,p=1;
+    if(g.ex)for(i=0;i<n;i++)st.t[i]=(c[p++]||"").trim();
+    if(g.pr)st.p=(c[p++]||"").trim();
+    if(g.th)st.th=(c[p++]||"").trim();
+    if(g.ev)st.ev=(c[p++]||"").trim();
     m.s.push(st);
   });
   document.getElementById("paste").value="";save();render();
 };
+var csel=document.getElementById("cls"),ssel=document.getElementById("sub");
+function fillSel(){
+  csel.innerHTML="";store.classes.forEach(function(c,i){var o=document.createElement("option");o.value=i;o.textContent=c.name;csel.appendChild(o)});
+  csel.value=store.active;
+  ssel.innerHTML="";store.subjects.forEach(function(s){var o=document.createElement("option");o.value=s.id;o.textContent=s.name;ssel.appendChild(o)});
+  ssel.value=store.sub;
+}
+csel.onchange=function(){store.active=+csel.value;save();render()};
+ssel.onchange=function(){store.sub=+ssel.value;save();render()};
+document.getElementById("cnew").onclick=function(){
+  var n=prompt("اسم الشعبة الجديدة (مثال: حاسبات - الثانية - أ):");
+  if(!n||!n.trim())return;
+  store.classes.push({name:n.trim(),months:{}});store.active=store.classes.length-1;save();fillSel();render();
+};
+document.getElementById("cren").onclick=function(){
+  var n=prompt("الاسم الجديد للشعبة:",C().name);
+  if(!n||!n.trim())return;
+  C().name=n.trim();save();fillSel();render();
+};
+document.getElementById("cdel").onclick=function(){
+  if(store.classes.length<2){alert("لازم تبقى شعبة وحدة على الأقل.");return}
+  if(confirm("حذف الشعبة «"+C().name+"» وكل درجاتها؟ لا يمكن التراجع.")){
+    store.classes.splice(store.active,1);store.active=0;save();fillSel();render();
+  }
+};
+document.getElementById("snew").onclick=function(){
+  var n=prompt("اسم المادة الجديدة:");
+  if(!n||!n.trim())return;
+  var id=store.subjects.reduce(function(a,s){return Math.max(a,s.id)},0)+1;
+  store.subjects.push({id:id,name:n.trim()});store.sub=id;save();fillSel();render();
+};
+document.getElementById("sren").onclick=function(){
+  var n=prompt("الاسم الجديد للمادة:",subName());
+  if(!n||!n.trim())return;
+  store.subjects.filter(function(s){return s.id===store.sub})[0].name=n.trim();save();fillSel();render();
+};
+document.getElementById("sdel").onclick=function(){
+  if(store.subjects.length<2){alert("لازم تبقى مادة وحدة على الأقل.");return}
+  if(confirm("حذف المادة «"+subName()+"» وكل درجاتها بجميع الشعب؟ لا يمكن التراجع.")){
+    var id=store.sub,pre="s"+id+"m";
+    store.classes.forEach(function(c){Object.keys(c.months).forEach(function(k){if(k.indexOf(pre)===0)delete c.months[k]})});
+    store.subjects=store.subjects.filter(function(s){return s.id!==id});
+    store.sub=store.subjects[0].id;save();fillSel();render();
+  }
+};
+function setCfg(k,v){var s=curSub();s.cfg=s.cfg||{};s.cfg[k]=v;save()}
+function cfgUI(){
+  var g=cfg(),names=[];
+  ["ex","pr","th","ev"].forEach(function(k){document.getElementById("g_"+k).checked=g[k]});
+  document.getElementById("m_p").value=g.mp;
+  document.getElementById("m_t").value=g.mt;
+  document.getElementById("m_e").value=g.me;
+  document.getElementById("cfgtot").textContent="مجموع درجة الشهر: "+r(maxTotal(g))+" | درجة النجاح: "+r(maxTotal(g)/2)+" (النصف)";
+  if(g.ex)names.push("درجات التمارين (حسب عددها)");
+  if(g.pr)names.push("التطبيقي");
+  if(g.th)names.push("النظري");
+  if(g.ev)names.push("التقييم");
+  document.getElementById("impnote").textContent="انسخ الصفوف من إكسل بهذا الترتيب: الاسم، ثم "+names.join("، ثم ")+"، والصقها هنا. سيُضاف الطلاب إلى الشهر الحالي.";
+}
+["ex","pr","th","ev"].forEach(function(k){
+  document.getElementById("g_"+k).onchange=function(){
+    var g=cfg();g[k]=this.checked;
+    if(!(g.ex||g.pr||g.th||g.ev)){this.checked=true;alert("لازم يبقى حقل وحد على الأقل.");return}
+    setCfg(k,this.checked);render();
+  };
+});
+[["m_p","mp"],["m_t","mt"],["m_e","me"]].forEach(function(a){
+  document.getElementById(a[0]).onchange=function(){
+    var v=parseFloat(this.value);
+    if(!(v>0)){cfgUI();return}
+    setCfg(a[1],v);render();
+  };
+});
+fillSel();
 render();
 </script>
 </body>
