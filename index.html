@@ -212,8 +212,11 @@ function calc(st,n,g){
   if(g.ex&&g.pr)prac=(sum+num(st.p))/(n+1);
   else if(g.ex)prac=n?sum/n:0;
   else if(g.pr)prac=num(st.p);
-  return {prac:prac,total:prac+(g.th?num(st.th):0)+(g.ev?num(st.ev):0)};
+  prac=up(prac);
+  return {prac:prac,total:up(prac+(g.th?num(st.th):0)+(g.ev?num(st.ev):0))};
 }
+/* تقريب لأقرب عدد صحيح: الكسر 0.5 فأكثر يُجبر للأعلى */
+function up(x){return Math.floor(x+0.5+1e-9)}
 function r(x){return Math.round(x*100)/100}
 function render(){
   var g=cfg(),m=M(),n=m.n,mx=maxTotal(g),pm=mx/2,h="<tr><th>#</th><th>اسم الطالب</th>",i;
